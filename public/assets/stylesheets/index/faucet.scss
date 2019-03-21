@@ -35,3 +35,17 @@
     }
   }
 }
+
+
+body, .content {
+  background-color:#bdae9b;
+}
+.request-tokens-button {
+  background-color:#21221d;
+  color: #bdae9b;
+}
+
+.request-tokens-button:hover {
+  background-color:#444739;
+  color: white;
+}

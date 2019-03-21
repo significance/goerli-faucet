@@ -4,7 +4,8 @@
   "description": "Sokol tetnet POA Network faucet",
   "main": "index.js",
   "scripts": {
-    "start": "npm run sass && npm run coffee && node index.js",
+    "start": "npm run build  && node index.js",
+    "build": "npm run sass && npm run coffee",
     "sass": "gulp sass",
     "coffee": "gulp javascript",
     "watch": "gulp watch"

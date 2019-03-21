@@ -15,7 +15,25 @@ if (configExists) {
 }
 app.config = config
 
-let web3
+const envAccount = process.env.ACCOUNT;
+if(envAccount) {
+  config.Ethereum.live.account = envAccount;
+  console.log("Using account from environment: " + envAccount);
+}
+
+const envPk = process.env.KEY;
+if(envPk) {
+  config.Ethereum.live.privateKey = envPk;
+  console.log("Using key from environment");
+}
+
+const envRpc = process.env.RPC;
+if(envRpc) {
+  config.Ethereum.live.rpc = envRpc;
+  console.log("Using rpc from environment: " + envRpc);
+}
+
+
 app.configureWeb3(config)
 .then(web3 => {
 	app.web3 = web3
@@ -31,13 +49,13 @@ app.configureWeb3(config)
 	require('./src/controllers/index')(app)
 
 	app.get('/', function(request, response) {
-	  response.send('Sokol POA Network faucet')
+	  response.send('Goerli Network faucet')
 	});
 
-	app.set('port', (process.env.PORT || 5000))
+	app.set('port', (process.env.PORT || 5001))
 
 	app.listen(app.get('port'), function () {
-	    console.log('Sokol testnet POA Network faucet is running on port', app.get('port'))
+	    console.log('Goerli Network faucet is running on port', app.get('port'))
 	})
 })
 .catch(error => {
