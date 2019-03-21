@@ -26,8 +26,7 @@
     top: 50%;
 
     @media screen and (max-width: $tablet-width) {
-      transform: translate(0);
-      top: 20px;
+      display:none;
     }
   }
 
@@ -50,7 +49,7 @@
     font-size: 12px;
 
     @media screen and (max-width: $tablet-width) {
-      padding-top: $footer-height;
+      padding-top: $footer-height - 40px;
       line-height: 20px;
     }
   }

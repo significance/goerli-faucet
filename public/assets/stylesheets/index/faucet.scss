@@ -36,6 +36,11 @@
   }
 }
 
+@media screen and (max-height: 730px) {
+  .faucet-logo {
+    display:none;
+  }
+}
 
 body, .content {
   background-color:#bdae9b;
