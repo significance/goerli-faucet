@@ -5,6 +5,12 @@ let app = express();
 
 require('./src/helpers/blockchain-helper')(app)
 
+process.on('SIGINT', function() {
+	console.log("Exiting.");
+	process.exit();
+});
+
+
 let config
 const configPath = './config.json'
 const configExists = fs.existsSync(configPath, fs.F_OK)

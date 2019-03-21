@@ -5,6 +5,7 @@ RUN mkdir /app
 WORKDIR /app
 ADD . /app
 RUN npm install
+RUN npm install
 RUN npm run build
 EXPOSE 5001
 CMD ["node","index.js"]
