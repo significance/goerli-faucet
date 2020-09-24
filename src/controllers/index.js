@@ -3,6 +3,32 @@ const { generateErrorResponse } = require('../helpers/generate-response')
 const  { validateCaptcha } = require('../helpers/captcha-helper')
 const { debug } = require('../helpers/debug')
 
+//ABI for ERC20 transfer
+const TransferABI = [
+	// transfer
+	{
+	 "constant": false,
+	 "inputs": [
+	  {
+	   "name": "_to",
+	   "type": "address"
+	  },
+	  {
+	   "name": "_value",
+	   "type": "uint256"
+	  }
+	 ],
+	 "name": "transfer",
+	 "outputs": [
+	  {
+	   "name": "",
+	   "type": "bool"
+	  }
+	 ],
+	 "type": "function"
+	}
+];
+
 module.exports = function (app) {
 	const config = app.config
 	const web3 = app.web3
@@ -16,6 +42,9 @@ module.exports = function (app) {
 
 	app.post('/', async function(request, response) {
 		const isDebug = app.config.debug
+		if(!Boolean(app.config.Captcha.required)) {
+			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)	
+		}
 		debug(isDebug, "REQUEST:")
 		debug(isDebug, request.body)
 		const recaptureResponse = request.body["g-recaptcha-response"]
@@ -29,12 +58,11 @@ module.exports = function (app) {
 		let captchaResponse
 		try {
 			captchaResponse = await validateCaptcha(app, recaptureResponse)
-		} catch(e) {
+		 } catch(e) {
 			return generateErrorResponse(response, e)
-		}
-		const receiver = request.body.receiver
+		 }
 		if (await validateCaptchaResponse(captchaResponse, receiver, response)) {
-			await sendPOAToRecipient(web3, receiver, response, isDebug)
+			await sendBZZAndEth(web3, receiver, response, isDebug)
 		}
 	});
 
@@ -66,21 +94,24 @@ module.exports = function (app) {
 		return true
 	}
 
-	async function sendPOAToRecipient(web3, receiver, response, isDebug) {
-		let senderPrivateKey = config.Ethereum[config.environment].privateKey
+	async function sendBZZAndEth(web3, receiver, response, isDebug) {
+		const BN = web3.utils.BN
+		let senderPrivateKey = config.Ethereum.prod.privateKey
 		const privateKeyHex = Buffer.from(senderPrivateKey, 'hex')
 		if (!web3.utils.isAddress(receiver)) {
 			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
 		}
-		
-		const gasPrice = web3.utils.toWei('1', 'gwei')
-		const gasPriceHex = web3.utils.toHex(gasPrice)
+		var batch = new web3.BatchRequest();
+
+		const gasPriceHex = web3.utils.toHex(web3.utils.toWei('1', 'gwei'))
+
+		// send Eth
 		const gasLimitHex = web3.utils.toHex(config.Ethereum.gasLimit)
-		const nonce = await web3.eth.getTransactionCount(config.Ethereum[config.environment].account)
+		const nonce = await web3.eth.getTransactionCount(config.Ethereum.prod.account)
 		const nonceHex = web3.utils.toHex(nonce)
-		const BN = web3.utils.BN
+		
 		const ethToSend = web3.utils.toWei(new BN(config.Ethereum.milliEtherToTransfer), "milliether")
-		const rawTx = {
+		const rawTxEth = {
 		  nonce: nonceHex,
 		  gasPrice: gasPriceHex,
 		  gasLimit: gasLimitHex,
@@ -88,31 +119,36 @@ module.exports = function (app) {
 		  value: ethToSend,
 		  data: '0x00'
 		}
+		const txEth = new EthereumTx(rawTxEth)
+		txEth.sign(privateKeyHex)
 
-		const tx = new EthereumTx(rawTx)
-		tx.sign(privateKeyHex)
+		const serializedEthTx = txEth.serialize()
 
-		const serializedTx = tx.serialize()
+		batch.add(web3.eth.sendSignedTransaction("0x" + serializedEthTx.toString('hex')).request);
 
-		let txHash
-		web3.eth.sendSignedTransaction("0x" + serializedTx.toString('hex'))
-		.on('transactionHash', (_txHash) => {
-			txHash = _txHash
-		})
-		.on('receipt', (receipt) => {
-			debug(isDebug, receipt)
-			if (receipt.status == '0x1') {
-				return sendRawTransactionResponse(txHash, response)
-			} else {
-				const error = {
-					message: messages.TX_HAS_BEEN_MINED_WITH_FALSE_STATUS,
-				}
-				return generateErrorResponse(response, error);
-			}
-		})
-		.on('error', (error) => {
-			return generateErrorResponse(response, error)
-		});
+		// send BZZ
+		var abiArray = JSON.parse(JSON.stringify(TransferABI));
+		var contract = new web3.eth.Contract(abiArray, config.Token.tokenAddress);
+		
+		var rawTXToken = {
+    		nonce: web3.utils.toHex(nonce + 1),
+    		gasPrice: gasPriceHex,
+			gasLimit: web3.utils.toHex(config.Token.gasLimit),
+			to: config.Token.tokenAddress,
+    		data: (contract.methods.transfer(receiver, config.Token.tokenToTransfer).encodeABI()).toString('hex')
+		};
+
+		const txToken = new EthereumTx(rawTXToken)
+		txToken.sign(privateKeyHex)
+		const serializedTokenTx = txToken.serialize()
+
+		batch.add(web3.eth.sendSignedTransaction("0x" + serializedTokenTx.toString('hex')).request);
+
+		try {
+			await batch.execute()
+		} catch(e) {
+			return generateErrorResponse(response, e)
+		}
 	}
 
 	function sendRawTransactionResponse(txHash, response) {
