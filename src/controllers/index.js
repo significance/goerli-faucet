@@ -38,6 +38,7 @@ module.exports = function (app) {
 		INVALID_ADDRESS: 'Invalid address',
 		TX_HAS_BEEN_MINED_WITH_FALSE_STATUS: 'Transaction has been mined, but status is false',
 		TX_HAS_BEEN_MINED: 'Tx has been mined',
+		TX_HAS_BEEN_SENt: 'Tx has been sent. Please verify whether the transaction was executed.'
 	}
 
 	app.post('/', async function(request, response) {
@@ -61,8 +62,8 @@ module.exports = function (app) {
 		 } catch(e) {
 			return generateErrorResponse(response, e)
 		 }
-		if (await validateCaptchaResponse(captchaResponse, receiver, response)) {
-			await sendBZZAndEth(web3, receiver, response, isDebug)
+		if (await validateCaptchaResponse(captchaResponse, request.body.receiver, response)) {
+			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)
 		}
 	});
 
@@ -105,14 +106,36 @@ module.exports = function (app) {
 
 		const gasPriceHex = web3.utils.toHex(web3.utils.toWei('1', 'gwei'))
 
+		let nonce = await web3.eth.getTransactionCount(config.Ethereum.prod.account)
+
+		// send BZZ
+		var abiArray = JSON.parse(JSON.stringify(TransferABI));
+		var contract = new web3.eth.Contract(abiArray, config.Token.tokenAddress);
+		
+		var rawTXToken = {
+    		nonce: web3.utils.toHex(nonce),
+    		gasPrice: gasPriceHex,
+			gasLimit: web3.utils.toHex(config.Token.gasLimit),
+			to: config.Token.tokenAddress,
+    		data: (contract.methods.transfer(receiver, config.Token.tokenToTransfer).encodeABI()).toString('hex')
+		};
+
+		
+		// increment nonce
+		
+
+		const txToken = new EthereumTx(rawTXToken)
+		txToken.sign(privateKeyHex)
+		const serializedTokenTx = txToken.serialize()
+		batch.add(web3.eth.sendSignedTransaction.request("0x" + serializedTokenTx.toString('hex')));
+		
+		nonce = nonce +1
 		// send Eth
 		const gasLimitHex = web3.utils.toHex(config.Ethereum.gasLimit)
-		const nonce = await web3.eth.getTransactionCount(config.Ethereum.prod.account)
-		const nonceHex = web3.utils.toHex(nonce)
 		
 		const ethToSend = web3.utils.toWei(new BN(config.Ethereum.milliEtherToTransfer), "milliether")
 		const rawTxEth = {
-		  nonce: nonceHex,
+		  nonce: web3.utils.toHex(nonce),
 		  gasPrice: gasPriceHex,
 		  gasLimit: gasLimitHex,
 		  to: receiver, 
@@ -124,30 +147,22 @@ module.exports = function (app) {
 
 		const serializedEthTx = txEth.serialize()
 
-		batch.add(web3.eth.sendSignedTransaction("0x" + serializedEthTx.toString('hex')).request);
-
-		// send BZZ
-		var abiArray = JSON.parse(JSON.stringify(TransferABI));
-		var contract = new web3.eth.Contract(abiArray, config.Token.tokenAddress);
-		
-		var rawTXToken = {
-    		nonce: web3.utils.toHex(nonce + 1),
-    		gasPrice: gasPriceHex,
-			gasLimit: web3.utils.toHex(config.Token.gasLimit),
-			to: config.Token.tokenAddress,
-    		data: (contract.methods.transfer(receiver, config.Token.tokenToTransfer).encodeABI()).toString('hex')
-		};
-
-		const txToken = new EthereumTx(rawTXToken)
-		txToken.sign(privateKeyHex)
-		const serializedTokenTx = txToken.serialize()
-
-		batch.add(web3.eth.sendSignedTransaction("0x" + serializedTokenTx.toString('hex')).request);
+		batch.add(web3.eth.sendSignedTransaction.request("0x" + serializedEthTx.toString('hex')));
 
 		try {
 			await batch.execute()
 		} catch(e) {
 			return generateErrorResponse(response, e)
+		} finally {
+			const successResponse = {
+				code: 200, 
+				title: 'Success', 
+				message: messages.TX_HAS_BEEN_SENt,
+				faucetAddress: `https://goerli.etherscan.io/address/${config.Ethereum.prod.account}`
+			}
+			response.send({
+				success: successResponse
+			})
 		}
 	}
 
