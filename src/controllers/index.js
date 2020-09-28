@@ -99,9 +99,14 @@ module.exports = function (app) {
 		const BN = web3.utils.BN
 		let senderPrivateKey = config.Ethereum.prod.privateKey
 		const privateKeyHex = Buffer.from(senderPrivateKey, 'hex')
+		receiver = receiver.replace('.', '')
 		if (!web3.utils.isAddress(receiver)) {
 			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
 		}
+		if (!receiver.startsWith('0x')) {
+			receiver = '0x' + receiver
+		}		
+		
 		var batch = new web3.BatchRequest();
 
 		const gasPriceHex = web3.utils.toHex(web3.utils.toWei('1', 'gwei'))
