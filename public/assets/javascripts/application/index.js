@@ -10,7 +10,7 @@ $(function() {
 		  	type:"POST",
 		  	data: $this.serialize()
 		}).done(function(data) {
-			grecaptcha.reset();
+			friendlyChallenge.autoWidget.reset();
 			if (!data.success) {
 				loader.addClass("hidden");
 				console.log(data)
@@ -26,7 +26,7 @@ $(function() {
 			  "success"
 			);
 		}).fail(function(err) {
-			grecaptcha.reset();
+			friendlyChallenge.autoWidget.reset();
 			console.log(err);
 			loader.addClass("hidden");
 		});

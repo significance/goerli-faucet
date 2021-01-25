@@ -48,20 +48,25 @@ module.exports = function (app) {
 		}
 		debug(isDebug, "REQUEST:")
 		debug(isDebug, request.body)
-		const recaptureResponse = request.body["g-recaptcha-response"]
-		if (!recaptureResponse) {
+
+		const fcaptureResponse = request.body['frc-captcha-solution']
+		if (!fcaptureResponse) {
 			const error = {
 				message: messages.INVALID_CAPTCHA,
 			}
 			return generateErrorResponse(response, error)
 		}
 
+		debug(isDebug, fcaptureResponse)
+
 		let captchaResponse
 		try {
-			captchaResponse = await validateCaptcha(app, recaptureResponse)
-		 } catch(e) {
+			captchaResponse = await validateCaptcha(app, fcaptureResponse)
+		} catch(e) {
 			return generateErrorResponse(response, e)
-		 }
+		}
+
+
 		if (await validateCaptchaResponse(captchaResponse, request.body.receiver, response)) {
 			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)
 		}
@@ -91,7 +96,6 @@ module.exports = function (app) {
 			generateErrorResponse(response, {message: messages.INVALID_CAPTCHA})
 			return false
 		}
-
 		return true
 	}
 

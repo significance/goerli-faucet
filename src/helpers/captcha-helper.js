@@ -9,8 +9,8 @@ function validateCaptcha (app, captchaResponse) {
 		const isDebug = app.config.debug
 		const secret = config.Captcha.secret
 	    const post_data_json = {
-	      secret,
-	      "response": captchaResponse
+	      "secret": config.Captcha.fsecret,
+	      "solution": captchaResponse
 	    }
 
 	    const post_data = querystring.stringify(post_data_json)
@@ -19,9 +19,9 @@ function validateCaptcha (app, captchaResponse) {
 	    debug(isDebug, post_data)
 
 	    const post_options = {
-	        host: 'www.google.com',
+	        host: 'friendlycaptcha.com',
 	        port: '443',
-	        path: '/recaptcha/api/siteverify',
+	        path: '/api/v1/siteverify',
 	        method: 'POST',
 	        headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'

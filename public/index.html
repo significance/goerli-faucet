@@ -9,7 +9,12 @@
     <link rel="mask-icon" color="#6151cc" href="./favicons/safari-pinned-tab.svg">
     <link rel="manifest" href="./favicons/manifest.webmanifest">
     <link href="./favicons/favicon.ico" rel="icon" type="image/x-icon">
-    <script src='https://www.google.com/recaptcha/api.js'></script>
+    <script type="text/javascript">
+      window.enableRequestTokensButton = () => {
+        let rt = document.getElementById('requestTokens');
+        rt.removeAttribute('disabled');
+      }
+    </script>
   </head>
   <body>
     <header class="header">
@@ -20,17 +25,17 @@
     <section class="content">
       <form action="/" method="POST" id="faucetForm">
         <div class="request-tokens">
-            <img class="qodef-light-logo faucet-logo" src="assets/images/swarm.png" width="100px" alt="light logo" style="margin-bottom:10px;">
+            <img class="qodef-light-logo faucet-logo" src="assets/images/swarm-logo-2.svg" width="100px" alt="light logo" style="margin-bottom:10px;">
           <h1>Goerli faucet</h1>
-            <input type="text" id="receiver" name="receiver" style="border-color: #21221d;background-color: #f0ddc6; color: black;" placeholder="Enter address to receive funds here"/>
+            <input type="text" id="receiver" name="receiver" style="border-color: #242424;background-color: #fafafa; color: black;" placeholder="Enter your address here to receive gETH & gBZZ"/>
             <h2>
               You can use https://rpc.slock.it/goerli RPC to connect<br>
               to the Goerli testnet.
             </h2>
-            <button type="submit" id="requestTokens" class="request-tokens-button">Request G&ouml;ETH and gBZZ</button>
+            <button type="submit" id="requestTokens" class="request-tokens-button" disabled="disabled">Request G&ouml;ETH and gBZZ</button>
         </div>
         <div class="text-xs-center">
-          <div class="g-recaptcha" data-sitekey="6Lft_c8ZAAAAANBj-vr9TQXBDXQUR7ur2LWaB_A1"></div>
+          <div class="frc-captcha" data-sitekey="FCMLI2ILBLG758NM" data-start="auto" data-callback="enableRequestTokensButton"></div>
         </div>
       </form>
     </section>
@@ -46,12 +51,16 @@
     </div>
     <footer class="footer">
       <div class="container">
-        <p class="rights">Powered by <b>Slock.it</b> - Send feedback to https://github.com/slockit/goerli-faucet</p>
+        <p class="rights">Powered by <a href="https://gateway.ethswarm.org/bzz/swarm.eth">Swarm</a></p>
         <div class="socials">
           <a href="https://twitter.com/slockitproject" class="social social_twitter"></a>
         </div>
       </div>
     </footer>
+    <!-- from unpkg -->
+    <script type="module" src="https://unpkg.com/friendly-challenge@0.6.1/widget.module.min.js" async defer></script>
+    <script nomodule src="https://unpkg.com/friendly-challenge@0.6.1/widget.min.js" async defer></script>
+
     <script src="./assets/javascripts/application.js?v=1.4" type="text/javascript"></script>
     <script>
         var url = new URL(window.location.href);
