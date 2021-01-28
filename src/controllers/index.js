@@ -41,6 +41,15 @@ module.exports = function (app) {
 		TX_HAS_BEEN_SENt: 'Tx has been sent. Please verify whether the transaction was executed.'
 	}
 
+	app.post('/fund', async function(request, response) {
+		const isDebug = app.config.debug
+		if(app.config.Auto.token.toString() === request.body.token.toString()) {
+			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)
+			return
+		}
+		return generateErrorResponse(response, error)
+	});
+
 	app.post('/', async function(request, response) {
 		const isDebug = app.config.debug
 		if(!Boolean(app.config.Captcha.required)) {
@@ -48,20 +57,25 @@ module.exports = function (app) {
 		}
 		debug(isDebug, "REQUEST:")
 		debug(isDebug, request.body)
-		const recaptureResponse = request.body["g-recaptcha-response"]
-		if (!recaptureResponse) {
+
+		const fcaptureResponse = request.body['frc-captcha-solution']
+		if (!fcaptureResponse) {
 			const error = {
 				message: messages.INVALID_CAPTCHA,
 			}
 			return generateErrorResponse(response, error)
 		}
 
+		debug(isDebug, fcaptureResponse)
+
 		let captchaResponse
 		try {
-			captchaResponse = await validateCaptcha(app, recaptureResponse)
-		 } catch(e) {
+			captchaResponse = await validateCaptcha(app, fcaptureResponse)
+		} catch(e) {
 			return generateErrorResponse(response, e)
-		 }
+		}
+
+
 		if (await validateCaptchaResponse(captchaResponse, request.body.receiver, response)) {
 			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)
 		}
@@ -91,7 +105,6 @@ module.exports = function (app) {
 			generateErrorResponse(response, {message: messages.INVALID_CAPTCHA})
 			return false
 		}
-
 		return true
 	}
 

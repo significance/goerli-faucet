@@ -7,8 +7,8 @@
   background-size: cover;
   background-position: center center;
 
-  background-color:#21221d;
-  color: #bdae9b;
+  background-color:#dd7200;
+  color: #fafafa;
 
   @media screen and (max-width: $tablet-width) {
     height: $footer-height + 20px;
@@ -56,6 +56,11 @@
 
   .socials {
     right: 0;
+  }
+
+  a {
+    color: #fafafa;
+    font-weight: bold;
   }
 }
 
