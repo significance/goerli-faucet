@@ -41,6 +41,15 @@ module.exports = function (app) {
 		TX_HAS_BEEN_SENt: 'Tx has been sent. Please verify whether the transaction was executed.'
 	}
 
+	app.post('/fund', async function(request, response) {
+		const isDebug = app.config.debug
+		if(app.config.Auto.token.toString() === request.body.token.toString()) {
+			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)
+			return
+		}
+		return generateErrorResponse(response, error)
+	});
+
 	app.post('/', async function(request, response) {
 		const isDebug = app.config.debug
 		if(!Boolean(app.config.Captcha.required)) {
