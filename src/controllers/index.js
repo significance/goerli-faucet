@@ -2,6 +2,7 @@ const EthereumTx = require('ethereumjs-tx')
 const { generateErrorResponse } = require('../helpers/generate-response')
 const  { validateCaptcha } = require('../helpers/captcha-helper')
 const { debug } = require('../helpers/debug')
+const cors = require('cors')
 
 //ABI for ERC20 transfer
 const TransferABI = [
@@ -33,6 +34,13 @@ module.exports = function (app) {
 	const config = app.config
 	const web3 = app.web3
 
+	const corsOptions = {
+		origin: app.config.AllowedOrigin.toString(),
+		optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+	}
+
+	app.use(cors(corsOptions))
+
 	const messages = {
 		INVALID_CAPTCHA: 'Invalid captcha',
 		INVALID_ADDRESS: 'Invalid address',
@@ -42,6 +50,15 @@ module.exports = function (app) {
 	}
 
 	app.post('/fund', async function(request, response) {
+		const isDebug = app.config.debug
+		if(app.config.Auto.token.toString() === request.body.token.toString()) {
+			await sendEth(web3, request.body.receiver, response, isDebug)
+			return
+		}
+		return generateErrorResponse(response, error)
+	});
+
+	app.post('/fund-gbzz', async function(request, response) {
 		const isDebug = app.config.debug
 		if(app.config.Auto.token.toString() === request.body.token.toString()) {
 			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)
@@ -149,6 +166,60 @@ module.exports = function (app) {
 		
 		nonce = nonce +1
 		// send Eth
+		const gasLimitHex = web3.utils.toHex(config.Ethereum.gasLimit)
+		
+		const ethToSend = web3.utils.toWei(new BN(config.Ethereum.milliEtherToTransfer), "milliether")
+		const rawTxEth = {
+		  nonce: web3.utils.toHex(nonce),
+		  gasPrice: gasPriceHex,
+		  gasLimit: gasLimitHex,
+		  to: receiver, 
+		  value: ethToSend,
+		  data: '0x00'
+		}
+		const txEth = new EthereumTx(rawTxEth)
+		txEth.sign(privateKeyHex)
+
+		const serializedEthTx = txEth.serialize()
+
+		batch.add(web3.eth.sendSignedTransaction.request("0x" + serializedEthTx.toString('hex')));
+
+		try {
+			await batch.execute()
+		} catch(e) {
+			return generateErrorResponse(response, e)
+		} finally {
+			const successResponse = {
+				code: 200, 
+				title: 'Success', 
+				message: messages.TX_HAS_BEEN_SENt,
+				faucetAddress: `https://goerli.etherscan.io/address/${config.Ethereum.prod.account}`
+			}
+			response.send({
+				success: successResponse
+			})
+		}
+	}
+
+	async function sendEth(web3, receiver, response, isDebug) {
+		const BN = web3.utils.BN
+		let senderPrivateKey = config.Ethereum.prod.privateKey
+		const privateKeyHex = Buffer.from(senderPrivateKey, 'hex')
+		receiver = receiver.replace('.', '')
+		if (!web3.utils.isAddress(receiver)) {
+			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
+		}
+		if (!receiver.startsWith('0x')) {
+			receiver = '0x' + receiver
+		}		
+		
+
+		var batch = new web3.BatchRequest();
+
+		const gasPriceHex = web3.utils.toHex(web3.utils.toWei('1', 'gwei'))
+
+		let nonce = await web3.eth.getTransactionCount(config.Ethereum.prod.account)
+
 		const gasLimitHex = web3.utils.toHex(config.Ethereum.gasLimit)
 		
 		const ethToSend = web3.utils.toWei(new BN(config.Ethereum.milliEtherToTransfer), "milliether")
