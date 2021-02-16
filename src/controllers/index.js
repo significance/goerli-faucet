@@ -30,6 +30,8 @@ const TransferABI = [
 	}
 ];
 
+let wazSent = [];
+
 module.exports = function (app) {
 	const config = app.config
 	const web3 = app.web3
@@ -52,7 +54,7 @@ module.exports = function (app) {
 	app.post('/fund', async function(request, response) {
 		const isDebug = app.config.debug
 		if(app.config.Auto.token.toString() === request.body.token.toString()) {
-			await sendEth(web3, request.body.receiver, response, isDebug)
+			await sendEthIfNotHazEth(web3, request.body.receiver, response, isDebug)
 			return
 		}
 		return generateErrorResponse(response, error)
@@ -189,6 +191,73 @@ module.exports = function (app) {
 		} catch(e) {
 			return generateErrorResponse(response, e)
 		} finally {
+			const successResponse = {
+				code: 200, 
+				title: 'Success', 
+				message: messages.TX_HAS_BEEN_SENt,
+				faucetAddress: `https://goerli.etherscan.io/address/${config.Ethereum.prod.account}`
+			}
+			response.send({
+				success: successResponse
+			})
+		}
+	}
+
+	async function sendEthIfNotHazEth(web3, receiver, response, isDebug) {
+		const BN = web3.utils.BN
+		let senderPrivateKey = config.Ethereum.prod.privateKey
+		const privateKeyHex = Buffer.from(senderPrivateKey, 'hex')
+		receiver = receiver.replace('.', '')
+
+		if (!receiver.startsWith('0x')) {
+			receiver = '0x' + receiver
+		}
+
+		if (!web3.utils.isAddress(receiver)) {
+			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
+		}
+
+	if (wazSent.indexOf(receiver) > -1) {
+			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
+		}
+
+		let balance = await web3.eth.getBalance(receiver);
+
+		if (balance > 0) {
+			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
+		}
+		
+
+		var batch = new web3.BatchRequest();
+
+		const gasPriceHex = web3.utils.toHex(web3.utils.toWei('1', 'gwei'))
+
+		let nonce = await web3.eth.getTransactionCount(config.Ethereum.prod.account)
+
+		const gasLimitHex = web3.utils.toHex(config.Ethereum.gasLimit)
+		
+		const ethToSend = web3.utils.toWei(new BN(config.Ethereum.milliEtherToTransfer), "milliether")
+		const rawTxEth = {
+		  nonce: web3.utils.toHex(nonce),
+		  gasPrice: gasPriceHex,
+		  gasLimit: gasLimitHex,
+		  to: receiver, 
+		  value: ethToSend,
+		  data: '0x00'
+		}
+		const txEth = new EthereumTx(rawTxEth)
+		txEth.sign(privateKeyHex)
+
+		const serializedEthTx = txEth.serialize()
+
+		batch.add(web3.eth.sendSignedTransaction.request("0x" + serializedEthTx.toString('hex')));
+
+		try {
+			await batch.execute()
+		} catch(e) {
+			return generateErrorResponse(response, e)
+		} finally {
+			wazSent.push(receiver)
 			const successResponse = {
 				code: 200, 
 				title: 'Success', 
