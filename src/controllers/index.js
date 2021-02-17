@@ -36,6 +36,8 @@ module.exports = function (app) {
 	const config = app.config
 	const web3 = app.web3
 
+	app.set('trust proxy', true);
+
 	const corsOptions = {
 		origin: app.config.AllowedOrigin.toString(),
 		optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
@@ -46,12 +48,15 @@ module.exports = function (app) {
 	const messages = {
 		INVALID_CAPTCHA: 'Invalid captcha',
 		INVALID_ADDRESS: 'Invalid address',
+		INVALID_WAS_FUNDED_MEM: 'Was funded memory',
+		INVALID_WAS_FUNDED_BAL: 'Was funded checked balance',
 		TX_HAS_BEEN_MINED_WITH_FALSE_STATUS: 'Transaction has been mined, but status is false',
 		TX_HAS_BEEN_MINED: 'Tx has been mined',
 		TX_HAS_BEEN_SENt: 'Tx has been sent. Please verify whether the transaction was executed.'
 	}
 
 	app.post('/fund', async function(request, response) {
+		console.log('request','/fund',request.ip,request.headers)
 		const isDebug = app.config.debug
 		if(app.config.Auto.token.toString() === request.body.token.toString()) {
 			await sendEthIfNotHazEth(web3, request.body.receiver, response, isDebug)
@@ -61,8 +66,9 @@ module.exports = function (app) {
 	});
 
 	app.post('/fund-gbzz', async function(request, response) {
+		console.log('request','/fund-gbzz',request.ip,request.headers)
 		const isDebug = app.config.debug
-		if(app.config.Auto.token.toString() === request.body.token.toString()) {
+		if(app.config.Auto.token2.toString() === request.body.token.toString()) {
 			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)
 			return
 		}
@@ -70,6 +76,7 @@ module.exports = function (app) {
 	});
 
 	app.post('/', async function(request, response) {
+		console.log('request','/fund',request.ip,request.headers)
 		const isDebug = app.config.debug
 		if(!Boolean(app.config.Captcha.required)) {
 			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)	
@@ -131,13 +138,24 @@ module.exports = function (app) {
 		const BN = web3.utils.BN
 		let senderPrivateKey = config.Ethereum.prod.privateKey
 		const privateKeyHex = Buffer.from(senderPrivateKey, 'hex')
-		receiver = receiver.replace('.', '')
+
+		if (!receiver.startsWith('0x')) {
+			receiver = '0x' + receiver
+		}
+
 		if (!web3.utils.isAddress(receiver)) {
 			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
 		}
-		if (!receiver.startsWith('0x')) {
-			receiver = '0x' + receiver
-		}		
+
+		if (wazSent.indexOf(receiver) > -1) {
+			return generateErrorResponse(response, {message: messages.INVALID_WAS_FUNDED_MEM})
+		}
+
+		let balance = await web3.eth.getBalance(receiver);
+
+		if (balance > 0) {
+			return generateErrorResponse(response, {message: messages.INVALID_WAS_FUNDED_BAL})
+		}
 		
 		var batch = new web3.BatchRequest();
 
@@ -217,14 +235,14 @@ module.exports = function (app) {
 			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
 		}
 
-	if (wazSent.indexOf(receiver) > -1) {
-			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
+		if (wazSent.indexOf(receiver) > -1) {
+			return generateErrorResponse(response, {message: messages.INVALID_WAS_FUNDED_MEM})
 		}
 
 		let balance = await web3.eth.getBalance(receiver);
 
 		if (balance > 0) {
-			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
+			return generateErrorResponse(response, {message: messages.INVALID_WAS_FUNDED_BAL})
 		}
 		
 
