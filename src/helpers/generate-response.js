@@ -6,7 +6,7 @@ function generateErrorResponse (response, err) {
         message: 'Internal server error' || err.message
       }
     };
-    console.log(err)
+    // console.log(err)
     response.send(out)
 }
 
