@@ -30,7 +30,8 @@ const TransferABI = [
 	}
 ];
 
-let wazSent = [];
+let wazSent = {};
+let wazSentIP = {};
 
 module.exports = function (app) {
 	const config = app.config
@@ -48,38 +49,39 @@ module.exports = function (app) {
 	const messages = {
 		INVALID_CAPTCHA: 'Invalid captcha',
 		INVALID_ADDRESS: 'Invalid address',
-		INVALID_WAS_FUNDED_MEM: 'Was funded memory',
-		INVALID_WAS_FUNDED_BAL: 'Was funded checked balance',
+		INVALID_WAS_FUNDED_MEM: 'Was already funded memory',
+		INVALID_WAS_FUNDED_IP_MEM: 'Was already funded memory IP',
+		INVALID_WAS_FUNDED_BAL: 'Was already funded checked balance',
 		TX_HAS_BEEN_MINED_WITH_FALSE_STATUS: 'Transaction has been mined, but status is false',
 		TX_HAS_BEEN_MINED: 'Tx has been mined',
 		TX_HAS_BEEN_SENt: 'Tx has been sent. Please verify whether the transaction was executed.'
 	}
 
 	app.post('/fund', async function(request, response) {
-		console.log('request','/fund',request.ip,request.headers)
+		console.log('request:', '/fund', "IP:", request.ip, "ADDRESS:", request.body.receiver)
 		const isDebug = app.config.debug
 		if(app.config.Auto.token.toString() === request.body.token.toString()) {
-			await sendEthIfNotHazEth(web3, request.body.receiver, response, isDebug)
+			await sendEthAndBzz(true, false, false, web3, request.body.receiver, response, isDebug, request.ip)
 			return
 		}
-		return generateErrorResponse(response, error)
+		return generateErrorResponse(response, {message: messages.TX_HAS_BEEN_MINED_WITH_FALSE_STATUS})
 	});
 
 	app.post('/fund-gbzz', async function(request, response) {
-		console.log('request','/fund-gbzz',request.ip,request.headers)
+		console.log('request:', '/fund-gbzz', "IP:", request.ip, "ADDRESS:", request.body.receiver)
 		const isDebug = app.config.debug
 		if(app.config.Auto.token2.toString() === request.body.token.toString()) {
-			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)
+			await sendEthAndBzz(true, true, true, web3, request.body.receiver, response, isDebug, request.ip)
 			return
 		}
-		return generateErrorResponse(response, error)
+		return generateErrorResponse(response, {message: messages.TX_HAS_BEEN_MINED_WITH_FALSE_STATUS})
 	});
 
 	app.post('/', async function(request, response) {
-		console.log('request','/fund',request.ip,request.headers)
+		console.log('request:', '/', "IP:", request.ip, "ADDRESS:", request.body.receiver)
 		const isDebug = app.config.debug
 		if(!Boolean(app.config.Captcha.required)) {
-			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)	
+			await sendEthAndBzz(true, true, false, web3, request.body.receiver, response, isDebug, request.ip)	
 		}
 		debug(isDebug, "REQUEST:")
 		debug(isDebug, request.body)
@@ -103,7 +105,7 @@ module.exports = function (app) {
 
 
 		if (await validateCaptchaResponse(captchaResponse, request.body.receiver, response)) {
-			await sendBZZAndEth(web3, request.body.receiver, response, isDebug)
+			await sendEthAndBzz(true, true, false, web3, request.body.receiver, response, isDebug, request.ip)
 		}
 	});
 
@@ -134,7 +136,7 @@ module.exports = function (app) {
 		return true
 	}
 
-	async function sendBZZAndEth(web3, receiver, response, isDebug) {
+	async function sendEthAndBzz(sendEth, sendBzz, sendAlways, web3, receiver, response, isDebug, ip) {
 		const BN = web3.utils.BN
 		let senderPrivateKey = config.Ethereum.prod.privateKey
 		const privateKeyHex = Buffer.from(senderPrivateKey, 'hex')
@@ -147,46 +149,55 @@ module.exports = function (app) {
 			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
 		}
 
-		if (wazSent.indexOf(receiver) > -1) {
+		if (wazSent[receiver] !== undefined && (wazSent[receiver] > 0 && sendAlways !== true)) {
 			return generateErrorResponse(response, {message: messages.INVALID_WAS_FUNDED_MEM})
+		}
+
+
+		if (wazSentIP[ip] !== undefined && wazSentIP[ip] > 2 && sendAlways !== true) {
+			return generateErrorResponse(response, {message: messages.INVALID_WAS_FUNDED_IP_MEM})
 		}
 
 		let balance = await web3.eth.getBalance(receiver);
 
-		if (balance > 0) {
+		if (balance > 0 && sendAlways !== true) {
 			return generateErrorResponse(response, {message: messages.INVALID_WAS_FUNDED_BAL})
 		}
 		
 		var batch = new web3.BatchRequest();
 
-		const gasPriceHex = web3.utils.toHex(web3.utils.toWei('1', 'gwei'))
+		let gasPriceHex = web3.utils.toHex(web3.utils.toWei('1', 'gwei'))
+
+		const gasLimitHex = web3.utils.toHex(config.Ethereum.gasLimit)
 
 		let nonce = await web3.eth.getTransactionCount(config.Ethereum.prod.account)
 
-		// send BZZ
-		var abiArray = JSON.parse(JSON.stringify(TransferABI));
-		var contract = new web3.eth.Contract(abiArray, config.Token.tokenAddress);
-		
-		var rawTXToken = {
-    		nonce: web3.utils.toHex(nonce),
-    		gasPrice: gasPriceHex,
-			gasLimit: web3.utils.toHex(config.Token.gasLimit),
-			to: config.Token.tokenAddress,
-    		data: (contract.methods.transfer(receiver, config.Token.tokenToTransfer).encodeABI()).toString('hex')
-		};
+		if(sendBzz === true){
 
-		
-		// increment nonce
-		
+			// send BZZ
+			var abiArray = JSON.parse(JSON.stringify(TransferABI));
+			var contract = new web3.eth.Contract(abiArray, config.Token.tokenAddress);
+			
+			var rawTXToken = {
+	    		nonce: web3.utils.toHex(nonce),
+	    		gasPrice: gasPriceHex,
+				gasLimit: web3.utils.toHex(config.Token.gasLimit),
+				to: config.Token.tokenAddress,
+	    		data: (contract.methods.transfer(receiver, config.Token.tokenToTransfer).encodeABI()).toString('hex')
+			};
 
-		const txToken = new EthereumTx(rawTXToken)
-		txToken.sign(privateKeyHex)
-		const serializedTokenTx = txToken.serialize()
-		batch.add(web3.eth.sendSignedTransaction.request("0x" + serializedTokenTx.toString('hex')));
-		
-		nonce = nonce +1
+			// increment nonce
+			
+			const txToken = new EthereumTx(rawTXToken)
+			txToken.sign(privateKeyHex)
+			const serializedTokenTx = txToken.serialize()
+			batch.add(web3.eth.sendSignedTransaction.request("0x" + serializedTokenTx.toString('hex')));
+			
+			nonce = nonce +1
+
+		}
+
 		// send Eth
-		const gasLimitHex = web3.utils.toHex(config.Ethereum.gasLimit)
 		
 		const ethToSend = web3.utils.toWei(new BN(config.Ethereum.milliEtherToTransfer), "milliether")
 		const rawTxEth = {
@@ -209,127 +220,10 @@ module.exports = function (app) {
 		} catch(e) {
 			return generateErrorResponse(response, e)
 		} finally {
-			const successResponse = {
-				code: 200, 
-				title: 'Success', 
-				message: messages.TX_HAS_BEEN_SENt,
-				faucetAddress: `https://goerli.etherscan.io/address/${config.Ethereum.prod.account}`
-			}
-			response.send({
-				success: successResponse
-			})
-		}
-	}
-
-	async function sendEthIfNotHazEth(web3, receiver, response, isDebug) {
-		const BN = web3.utils.BN
-		let senderPrivateKey = config.Ethereum.prod.privateKey
-		const privateKeyHex = Buffer.from(senderPrivateKey, 'hex')
-		receiver = receiver.replace('.', '')
-
-		if (!receiver.startsWith('0x')) {
-			receiver = '0x' + receiver
-		}
-
-		if (!web3.utils.isAddress(receiver)) {
-			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
-		}
-
-		if (wazSent.indexOf(receiver) > -1) {
-			return generateErrorResponse(response, {message: messages.INVALID_WAS_FUNDED_MEM})
-		}
-
-		let balance = await web3.eth.getBalance(receiver);
-
-		if (balance > 0) {
-			return generateErrorResponse(response, {message: messages.INVALID_WAS_FUNDED_BAL})
-		}
-		
-
-		var batch = new web3.BatchRequest();
-
-		const gasPriceHex = web3.utils.toHex(web3.utils.toWei('1', 'gwei'))
-
-		let nonce = await web3.eth.getTransactionCount(config.Ethereum.prod.account)
-
-		const gasLimitHex = web3.utils.toHex(config.Ethereum.gasLimit)
-		
-		const ethToSend = web3.utils.toWei(new BN(config.Ethereum.milliEtherToTransfer), "milliether")
-		const rawTxEth = {
-		  nonce: web3.utils.toHex(nonce),
-		  gasPrice: gasPriceHex,
-		  gasLimit: gasLimitHex,
-		  to: receiver, 
-		  value: ethToSend,
-		  data: '0x00'
-		}
-		const txEth = new EthereumTx(rawTxEth)
-		txEth.sign(privateKeyHex)
-
-		const serializedEthTx = txEth.serialize()
-
-		batch.add(web3.eth.sendSignedTransaction.request("0x" + serializedEthTx.toString('hex')));
-
-		try {
-			await batch.execute()
-		} catch(e) {
-			return generateErrorResponse(response, e)
-		} finally {
-			wazSent.push(receiver)
-			const successResponse = {
-				code: 200, 
-				title: 'Success', 
-				message: messages.TX_HAS_BEEN_SENt,
-				faucetAddress: `https://goerli.etherscan.io/address/${config.Ethereum.prod.account}`
-			}
-			response.send({
-				success: successResponse
-			})
-		}
-	}
-
-	async function sendEth(web3, receiver, response, isDebug) {
-		const BN = web3.utils.BN
-		let senderPrivateKey = config.Ethereum.prod.privateKey
-		const privateKeyHex = Buffer.from(senderPrivateKey, 'hex')
-		receiver = receiver.replace('.', '')
-		if (!web3.utils.isAddress(receiver)) {
-			return generateErrorResponse(response, {message: messages.INVALID_ADDRESS})
-		}
-		if (!receiver.startsWith('0x')) {
-			receiver = '0x' + receiver
-		}		
-		
-
-		var batch = new web3.BatchRequest();
-
-		const gasPriceHex = web3.utils.toHex(web3.utils.toWei('1', 'gwei'))
-
-		let nonce = await web3.eth.getTransactionCount(config.Ethereum.prod.account)
-
-		const gasLimitHex = web3.utils.toHex(config.Ethereum.gasLimit)
-		
-		const ethToSend = web3.utils.toWei(new BN(config.Ethereum.milliEtherToTransfer), "milliether")
-		const rawTxEth = {
-		  nonce: web3.utils.toHex(nonce),
-		  gasPrice: gasPriceHex,
-		  gasLimit: gasLimitHex,
-		  to: receiver, 
-		  value: ethToSend,
-		  data: '0x00'
-		}
-		const txEth = new EthereumTx(rawTxEth)
-		txEth.sign(privateKeyHex)
-
-		const serializedEthTx = txEth.serialize()
-
-		batch.add(web3.eth.sendSignedTransaction.request("0x" + serializedEthTx.toString('hex')));
-
-		try {
-			await batch.execute()
-		} catch(e) {
-			return generateErrorResponse(response, e)
-		} finally {
+			wazSent[receiver] === undefined ? wazSent[receiver] = 1 : wazSent[receiver] += 1
+			wazSentIP[ip] === undefined ? wazSentIP[ip] = 1 : wazSentIP[ip] += 1
+			
+			wazSentIP[ip] += 1
 			const successResponse = {
 				code: 200, 
 				title: 'Success', 
