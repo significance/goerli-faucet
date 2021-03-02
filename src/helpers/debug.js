@@ -1,5 +1,5 @@
 function debug (isDebug, text) {
-	if (isDebug) {
+	if (isDebug === true) {
   		console.log(text)
 	}
 }
