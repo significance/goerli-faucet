@@ -49,7 +49,7 @@ module.exports = function (app) {
 	const messages = {
 		INVALID_CAPTCHA: 'Invalid captcha',
 		INVALID_ADDRESS: 'Invalid address',
-		INVALID_WAS_FUNDED_MEM: 'Was already funded memory',
+		INVALID_WAS_FUNDED_MEM: 'Was already funded memory address',
 		INVALID_WAS_FUNDED_IP_MEM: 'Was already funded memory IP',
 		INVALID_WAS_FUNDED_BAL: 'Was already funded checked balance',
 		TX_HAS_BEEN_MINED_WITH_FALSE_STATUS: 'Transaction has been mined, but status is false',
@@ -58,30 +58,44 @@ module.exports = function (app) {
 	}
 
 	app.post('/fund', async function(request, response) {
-		console.log('request:', '/fund', "IP:", request.ip, "ADDRESS:", request.body.receiver)
+		console.log('req:', '/fund', "IP:", request.ip, "ADDRESS:", request.body.receiver)
 		const isDebug = app.config.debug
 		if(app.config.Auto.token.toString() === request.body.token.toString()) {
 			await sendEthAndBzz(true, false, false, web3, request.body.receiver, response, isDebug, request.ip)
+			console.log('fun:', '/fund', "IP:", request.ip, "ADDRESS:", request.body.receiver)
+			return
+		}
+		return generateErrorResponse(response, {message: messages.TX_HAS_BEEN_MINED_WITH_FALSE_STATUS})
+	});
+
+	app.post('/fund-sprinkle', async function(request, response) {
+		console.log('req:', '/fund-sprinkle', "IP:", request.ip, "ADDRESS:", request.body.receiver)
+		const isDebug = app.config.debug
+		if(app.config.Auto.token3.toString() === request.body.token.toString()) {
+			await sendEthAndBzz(true, true, true, web3, request.body.receiver, response, isDebug, request.ip)
+			console.log('fun:', '/fund-sprinkle', "IP:", request.ip, "ADDRESS:", request.body.receiver)
 			return
 		}
 		return generateErrorResponse(response, {message: messages.TX_HAS_BEEN_MINED_WITH_FALSE_STATUS})
 	});
 
 	app.post('/fund-gbzz', async function(request, response) {
-		console.log('request:', '/fund-gbzz', "IP:", request.ip, "ADDRESS:", request.body.receiver)
+		console.log('req:', '/fund-gbzz', "IP:", request.ip, "ADDRESS:", request.body.receiver)
 		const isDebug = app.config.debug
 		if(app.config.Auto.token2.toString() === request.body.token.toString()) {
 			await sendEthAndBzz(true, true, true, web3, request.body.receiver, response, isDebug, request.ip)
+			console.log('fun:', '/fund-gbzz', "IP:", request.ip, "ADDRESS:", request.body.receiver)
 			return
 		}
 		return generateErrorResponse(response, {message: messages.TX_HAS_BEEN_MINED_WITH_FALSE_STATUS})
 	});
 
 	app.post('/', async function(request, response) {
-		console.log('request:', '/', "IP:", request.ip, "ADDRESS:", request.body.receiver)
+		console.log('req:', '/', "IP:", request.ip, "ADDRESS:", request.body.receiver)
 		const isDebug = app.config.debug
 		if(!Boolean(app.config.Captcha.required)) {
 			await sendEthAndBzz(true, true, false, web3, request.body.receiver, response, isDebug, request.ip)	
+			console.log('fun:', '/fund-gbzz', "IP:", request.ip, "ADDRESS:", request.body.receiver)
 		}
 		debug(isDebug, "REQUEST:")
 		debug(isDebug, request.body)
@@ -137,6 +151,7 @@ module.exports = function (app) {
 	}
 
 	async function sendEthAndBzz(sendEth, sendBzz, sendAlways, web3, receiver, response, isDebug, ip) {
+		let tx1, tx2 = false
 		const BN = web3.utils.BN
 		let senderPrivateKey = config.Ethereum.prod.privateKey
 		const privateKeyHex = Buffer.from(senderPrivateKey, 'hex')
@@ -164,7 +179,7 @@ module.exports = function (app) {
 			return generateErrorResponse(response, {message: messages.INVALID_WAS_FUNDED_BAL})
 		}
 		
-		var batch = new web3.BatchRequest();
+		// var batch = new web3.BatchRequest();
 
 		let gasPriceHex = web3.utils.toHex(web3.utils.toWei('1', 'gwei'))
 
@@ -191,7 +206,9 @@ module.exports = function (app) {
 			const txToken = new EthereumTx(rawTXToken)
 			txToken.sign(privateKeyHex)
 			const serializedTokenTx = txToken.serialize()
-			batch.add(web3.eth.sendSignedTransaction.request("0x" + serializedTokenTx.toString('hex')));
+			tx1 = new Promise((resolve,reject)=>{
+					web3.eth.sendSignedTransaction("0x" + serializedTokenTx.toString('hex')).on('receipt',()=>{resolve()})
+				}) 
 			
 			nonce = nonce +1
 
@@ -212,11 +229,17 @@ module.exports = function (app) {
 		txEth.sign(privateKeyHex)
 
 		const serializedEthTx = txEth.serialize()
-
-		batch.add(web3.eth.sendSignedTransaction.request("0x" + serializedEthTx.toString('hex')));
+		
+		tx2 = new Promise((resolve,reject)=>{
+				web3.eth.sendSignedTransaction("0x" + serializedEthTx.toString('hex')).on('receipt',()=>{resolve()})
+			}) 
 
 		try {
-			await batch.execute()
+			if(tx1 !== false){
+				await Promise.all([tx1, tx2])
+			}else{
+				await  Promise.all([tx2])
+			}
 		} catch(e) {
 			return generateErrorResponse(response, e)
 		} finally {
@@ -235,6 +258,7 @@ module.exports = function (app) {
 			})
 		}
 	}
+
 
 	function sendRawTransactionResponse(txHash, response) {
 		const successResponse = {
