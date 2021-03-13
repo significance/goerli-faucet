@@ -181,7 +181,7 @@ module.exports = function (app) {
 		
 		// var batch = new web3.BatchRequest();
 
-		let gasPriceHex = web3.utils.toHex(web3.utils.toWei('1', 'gwei'))
+		let gasPriceHex = web3.utils.toHex(web3.utils.toWei('3', 'gwei'))
 
 		const gasLimitHex = web3.utils.toHex(config.Ethereum.gasLimit)
 
